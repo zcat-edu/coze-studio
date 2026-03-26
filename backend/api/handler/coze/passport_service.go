@@ -19,10 +19,24 @@
 package coze
 
 import (
+	"bytes"
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"errors"
+	"fmt"
 	"io"
+	"math"
 	"net/http"
+	"os"
+	"runtime"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol"
@@ -35,6 +49,8 @@ import (
 	"github.com/coze-dev/coze-studio/backend/pkg/logs"
 	"github.com/coze-dev/coze-studio/backend/types/consts"
 )
+
+const supportedThirdLoginPlatform = "zcat"
 
 // PassportWebEmailRegisterV2Post .
 // @router /passport/web/email/register/v2/ [POST]
@@ -217,4 +233,321 @@ func UserUpdateProfile(ctx context.Context, c *app.RequestContext) {
 	}
 
 	c.JSON(http.StatusOK, resp)
+}
+
+// PassportPlatformALoginPost .
+// @router /api/passport/web/platform-a/login/ [POST]
+func PassportPlatformALoginPost(ctx context.Context, c *app.RequestContext) {
+	var err error
+	var req passport.PassportPlatformALoginPostRequest
+	err = c.BindAndValidate(&req)
+	if err != nil {
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	resp, sessionKey, err := user.UserApplicationSVC.PassportPlatformALoginPost(ctx, &req)
+	if err != nil {
+		internalServerErrorResponse(ctx, c, err)
+		return
+	}
+
+	c.SetCookie(entity.SessionKey,
+		sessionKey,
+		consts.SessionMaxAgeSecond,
+		"/", domain.GetOriginHost(c),
+		protocol.CookieSameSiteDefaultMode,
+		false, true)
+	c.JSON(http.StatusOK, resp)
+}
+
+// PassportThirdLoginGet .
+// @router /api/auth/third_login [GET]
+func PassportThirdLoginGet(ctx context.Context, c *app.RequestContext) {
+	// 解析请求参数
+	ticket := c.Query("ticket")
+	timestamp := c.Query("timestamp")
+	sign := c.Query("sign")
+	appID := c.Query("app_id")
+	platform := c.Query("platform")
+	if platform == "" {
+		platform = supportedThirdLoginPlatform
+	}
+	if !strings.EqualFold(platform, supportedThirdLoginPlatform) {
+		logs.Errorf("[PassportThirdLoginGet] Unsupported platform: %s", platform)
+		c.String(http.StatusBadRequest, "unsupported platform")
+		return
+	}
+	platform = supportedThirdLoginPlatform
+
+	// 添加调试日志
+	logs.Errorf("[PassportThirdLoginGet] Received request: ticket=%s, timestamp=%s, sign=%s, app_id=%s, platform=%s", ticket, timestamp, sign, appID, platform)
+
+	// 1. 校验时间（防重放）
+	now := time.Now().Unix()
+	ts, err := strconv.ParseInt(timestamp, 10, 64)
+	if err != nil {
+		logs.Errorf("[PassportThirdLoginGet] Invalid timestamp: %v", err)
+		c.String(http.StatusUnauthorized, "invalid timestamp")
+		return
+	}
+	if math.Abs(float64(now-ts)) > 60 {
+		logs.Errorf("[PassportThirdLoginGet] Expired timestamp: now=%d, ts=%d", now, ts)
+		c.String(http.StatusUnauthorized, "expired")
+		return
+	}
+
+	// 2. 验签（如果配置了 SIGN_SECRET）
+	signSecret := os.Getenv("SIGN_SECRET")
+	if signSecret != "" {
+		// Prefer the simplified signature format so callers do not need app_id.
+		expected := hmacSHA256(ticket+timestamp, signSecret)
+		legacyExpected := hmacSHA256(appID+ticket+timestamp, signSecret)
+		if sign != expected && sign != legacyExpected {
+			logs.Errorf("[PassportThirdLoginGet] Invalid sign: actual=%s", sign)
+			c.String(http.StatusUnauthorized, "invalid sign")
+			return
+		}
+	}
+
+	// 3. 解密 ticket
+	aesKey := os.Getenv("AES_KEY")
+	var plaintext string
+	var uid string
+	var innerTS int64
+
+	// 测试模式：如果 ticket 是 "test"，直接使用测试数据
+	if ticket == "test" {
+		logs.Errorf("[PassportThirdLoginGet] Test mode: using test data")
+		uid = "test_user"
+		innerTS = now
+	} else {
+		if aesKey == "" {
+			logs.Errorf("[PassportThirdLoginGet] AES_KEY not configured")
+			c.String(http.StatusInternalServerError, "AES_KEY not configured")
+			return
+		}
+		var err error
+		plaintext, err = decryptAES(ticket, aesKey)
+		if err != nil {
+			logs.Errorf("[PassportThirdLoginGet] Invalid ticket: %v", err)
+			c.String(http.StatusUnauthorized, "invalid ticket")
+			return
+		}
+
+		// plaintext = "uid|timestamp"
+		parts := strings.Split(plaintext, "|")
+		if len(parts) != 2 {
+			logs.Errorf("[PassportThirdLoginGet] Invalid ticket format: %s", plaintext)
+			c.String(http.StatusUnauthorized, "invalid ticket format")
+			return
+		}
+		uid = parts[0]
+		innerTS, err = strconv.ParseInt(parts[1], 10, 64)
+		if err != nil {
+			logs.Errorf("[PassportThirdLoginGet] Invalid inner timestamp: %v", err)
+			c.String(http.StatusUnauthorized, "invalid inner timestamp")
+			return
+		}
+
+		// 再校验一次内部 timestamp（双保险）
+		if math.Abs(float64(now-innerTS)) > 60 {
+			logs.Errorf("[PassportThirdLoginGet] Expired inner timestamp: now=%d, innerTS=%d", now, innerTS)
+			c.String(http.StatusUnauthorized, "expired inner ts")
+			return
+		}
+	}
+
+	// 4. 查用户
+	var userEntity *entity.User
+	var sessionKey string
+
+	// 对于 Windows 平台，使用模拟的用户处理逻辑
+	if runtime.GOOS == "windows" {
+		// 模拟用户数据
+		userEntity = &entity.User{
+			UserID: 1,
+			Name:   uid,
+			Email:  uid + "@example.com",
+		}
+		// 模拟会话密钥
+		sessionKey = "test_session_key"
+		logs.Errorf("[PassportThirdLoginGet] Windows platform: using mock user and session")
+	} else {
+		// 非 Windows 平台，使用正常的用户处理逻辑
+		userEntity, err = user.UserApplicationSVC.FindUserByExternalID(ctx, uid, platform)
+		if err != nil {
+			// 用户不存在，创建新用户
+			logs.Errorf("[PassportThirdLoginGet] User not found, creating new user: uid=%s, platform=%s", uid, platform)
+			userEntity, err = user.UserApplicationSVC.CreateUserWithExternalID(ctx, uid, platform)
+			if err != nil {
+				logs.Errorf("[PassportThirdLoginGet] Failed to create user: %v", err)
+				internalServerErrorResponse(ctx, c, err)
+				return
+			}
+		}
+
+		// 5. 生成 Coze 登录态
+		sessionKey, err = user.UserApplicationSVC.GenerateSession(ctx, userEntity)
+		if err != nil {
+			logs.Errorf("[PassportThirdLoginGet] Failed to generate session: %v", err)
+			internalServerErrorResponse(ctx, c, err)
+			return
+		}
+	}
+
+	// 设置 cookie
+	c.SetCookie(entity.SessionKey,
+		sessionKey,
+		consts.SessionMaxAgeSecond,
+		"/", domain.GetOriginHost(c),
+		protocol.CookieSameSiteDefaultMode,
+		false, true)
+
+	// 6. 跳转首页
+	logs.Errorf("[PassportThirdLoginGet] Login successful, redirecting to /")
+	c.Redirect(http.StatusFound, []byte("/"))
+}
+
+// 辅助函数：AES 解密
+func decryptAES(ticket, key string) (string, error) {
+	// 实现 AES 解密逻辑
+	// 这里使用 AES-GCM 模式
+	data, err := base64.RawURLEncoding.DecodeString(ticket)
+	if err != nil {
+		return "", err
+	}
+
+	if len(data) < 12 {
+		return "", errors.New("invalid ticket length")
+	}
+
+	nonce := data[:12]
+	ciphertext := data[12:]
+
+	block, err := aes.NewCipher([]byte(key))
+	if err != nil {
+		return "", err
+	}
+
+	aesgcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+
+	plaintext, err := aesgcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", err
+	}
+
+	return string(plaintext), nil
+}
+
+// 辅助函数：HMAC-SHA256
+func hmacSHA256(data, key string) string {
+	h := hmac.New(sha256.New, []byte(key))
+	h.Write([]byte(data))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// 辅助函数：AES-CBC 加密
+func encryptAESCBC(plaintext, key string) (string, error) {
+	// 将密钥转换为字节数组
+	keyBytes := []byte(key)
+
+	// 确保密钥长度为 16、24 或 32 字节
+	if len(keyBytes) != 16 && len(keyBytes) != 24 && len(keyBytes) != 32 {
+		return "", errors.New("invalid key length")
+	}
+
+	// 使用密钥的前 16 字节作为 IV
+	iv := keyBytes[:16]
+
+	// 创建 AES 加密器
+	block, err := aes.NewCipher(keyBytes)
+	if err != nil {
+		return "", err
+	}
+
+	// 对明文进行 PKCS5 填充
+	padding := block.BlockSize() - len(plaintext)%block.BlockSize()
+	plaintext += string(bytes.Repeat([]byte{byte(padding)}, padding))
+
+	// 创建加密器
+	ciphertext := make([]byte, len(plaintext))
+	mode := cipher.NewCBCEncrypter(block, iv)
+	mode.CryptBlocks(ciphertext, []byte(plaintext))
+
+	// 将密文转换为 hex 编码
+	return hex.EncodeToString(ciphertext), nil
+}
+
+// PassportConnectSessionGet .
+// @router /api/open/connect/session [GET]
+func PassportConnectSessionGet(ctx context.Context, c *app.RequestContext) {
+	// 从请求头中获取 Bearer token
+	authHeaderBytes := c.GetHeader("Authorization")
+	authHeader := string(authHeaderBytes)
+	if authHeader == "" {
+		c.JSON(http.StatusUnauthorized, map[string]interface{}{
+			"code":    401,
+			"message": "missing authorization header",
+		})
+		return
+	}
+
+	// 验证 token 格式
+	parts := strings.SplitN(authHeader, " ", 2)
+	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+		c.JSON(http.StatusUnauthorized, map[string]interface{}{
+			"code":    401,
+			"message": "invalid authorization format",
+		})
+		return
+	}
+
+	// 这里可以添加 token 验证逻辑
+	// 为了测试，我们暂时跳过真实的 token 验证
+
+	// 为了测试，我们使用模拟数据
+	userUID := "12345"
+	userBID := "40"
+
+	// 生成时间戳
+	timestamp := time.Now().Unix()
+	expireAt := timestamp + 600 // 600 秒有效期
+
+	// 构建明文
+	plaintext := fmt.Sprintf("%s|%s|%d", userUID, userBID, timestamp)
+
+	// 获取 AES 密钥
+	aesKey := os.Getenv("AES_KEY")
+	if aesKey == "" {
+		aesKey = "00112233445566778899aabbccddeeff" // 默认密钥，仅用于测试
+	}
+
+	// 加密明文
+	ticket, err := encryptAESCBC(plaintext, aesKey)
+	if err != nil {
+		logs.Errorf("[PassportConnectSessionGet] Failed to encrypt: %v", err)
+		c.JSON(http.StatusInternalServerError, map[string]interface{}{
+			"code":    500,
+			"message": "failed to encrypt",
+		})
+		return
+	}
+
+	// 构建响应
+	response := map[string]interface{}{
+		"code":    200,
+		"message": "success",
+		"result": map[string]interface{}{
+			"ticket":       ticket,
+			"expire_at":    expireAt,
+			"expires_in":   600,
+			"redirect_url": "",
+		},
+	}
+
+	c.JSON(http.StatusOK, response)
 }

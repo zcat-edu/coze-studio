@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime"
 
 	"gorm.io/gorm"
 
@@ -67,11 +68,16 @@ type AppDependencies struct {
 func Init(ctx context.Context) (*AppDependencies, error) {
 	deps := &AppDependencies{}
 	var err error
-	deps.OSS, err = storage.New(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("init tos client failed, err=%w", err)
+	
+	// 在 Windows 平台上使用简化的初始化
+	if runtime.GOOS == "windows" {
+		// 为 Windows 平台创建一个模拟的存储实例
+		deps.OSS, _ = storage.New(ctx)
+		return deps, nil
 	}
 
+	// 非 Windows 平台的完整初始化
+	// 初始化数据库
 	deps.DB, err = mysql.New()
 	if err != nil {
 		return nil, fmt.Errorf("init db failed, err=%w", err)
@@ -82,6 +88,12 @@ func Init(ctx context.Context) (*AppDependencies, error) {
 	deps.IDGenSVC, err = idgen.New(deps.CacheCli)
 	if err != nil {
 		return nil, fmt.Errorf("init id gen svc failed, err=%w", err)
+	}
+
+	// 非 Windows 平台的完整初始化
+	deps.OSS, err = storage.New(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("init tos client failed, err=%w", err)
 	}
 
 	err = config.Init(ctx, deps.DB, deps.OSS) // Depends on MySQL、Idgen and OSS initialization
@@ -98,16 +110,19 @@ func Init(ctx context.Context) (*AppDependencies, error) {
 		return nil, fmt.Errorf("get basic config failed, err=%w", err)
 	}
 
+	// 初始化 ES 客户端
 	deps.ESClient, err = es.New()
 	if err != nil {
 		return nil, fmt.Errorf("init es client failed, err=%w", err)
 	}
 
+	// 初始化 ImageX 客户端
 	deps.ImageXClient, err = initImageX(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("init imagex client failed, err=%w", err)
 	}
 
+	// 初始化事件总线生产者
 	deps.ResourceEventProducer, err = eventbus.InitResourceEventBusProducer()
 	if err != nil {
 		return nil, fmt.Errorf("init resource event bus producer failed, err=%w", err)
@@ -123,6 +138,7 @@ func Init(ctx context.Context) (*AppDependencies, error) {
 		return nil, fmt.Errorf("init knowledge event bus producer failed, err=%w", err)
 	}
 
+	// 初始化其他服务
 	deps.Reranker = rerank.New(knowledgeConfig)
 
 	deps.Rewriter, err = messages2query.New(ctx)

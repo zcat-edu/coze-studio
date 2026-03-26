@@ -499,6 +499,83 @@ func (u *userImpl) GetUserSpaceBySpaceID(ctx context.Context, spaceID []int64) (
 	}), nil
 }
 
+func (u *userImpl) PlatformALogin(ctx context.Context, email string) (user *userEntity.User, err error) {
+	userModel, exist, err := u.UserRepo.GetUsersByEmail(ctx, email)
+	if err != nil {
+		return nil, err
+	}
+
+	if !exist {
+		return nil, errorx.New(errno.ErrUserInfoInvalidateCode)
+	}
+
+	uniqueSessionID, err := u.IDGen.GenID(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate session id: %w", err)
+	}
+
+	sessionKey, err := generateSessionKey(uniqueSessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update user session key
+	err = u.UserRepo.UpdateSessionKey(ctx, userModel.ID, sessionKey)
+	if err != nil {
+		return nil, err
+	}
+
+	userModel.SessionKey = sessionKey
+
+	resURL, err := u.IconOSS.GetObjectUrl(ctx, userModel.IconURI)
+	if err != nil {
+		return nil, err
+	}
+
+	return userPo2Do(userModel, resURL), nil
+}
+
+// CreateSession creates a new session for the user
+func (u *userImpl) CreateSession(ctx context.Context, userID int64) (sessionKey string, err error) {
+	// Generate a unique session ID
+	uniqueSessionID, err := u.IDGen.GenID(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate session id: %w", err)
+	}
+
+	// Generate session key
+	sessionKey, err = generateSessionKey(uniqueSessionID)
+	if err != nil {
+		return "", err
+	}
+
+	// Update user session key
+	err = u.UserRepo.UpdateSessionKey(ctx, userID, sessionKey)
+	if err != nil {
+		return "", err
+	}
+
+	return sessionKey, nil
+}
+
+// FindUserByExternalID finds a user by external ID and platform
+func (u *userImpl) FindUserByExternalID(ctx context.Context, externalID, platform string) (user *userEntity.User, err error) {
+	// Use email field to store external ID and platform information
+	email := externalID + "@" + platform + ".com"
+	userModel, exist, err := u.UserRepo.GetUsersByEmail(ctx, email)
+	if err != nil {
+		return nil, err
+	}
+	if !exist {
+		return nil, errorx.New(errno.ErrUserInfoInvalidateCode)
+	}
+	resURL, err := u.IconOSS.GetObjectUrl(ctx, userModel.IconURI)
+	if err != nil {
+		return nil, err
+	}
+	return userPo2Do(userModel, resURL), nil
+}
+
 func spacePo2Do(space *model.Space, iconUrl string) *userEntity.Space {
 	return &userEntity.Space{
 		ID:          space.ID,

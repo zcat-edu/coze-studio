@@ -1,0 +1,122 @@
+id: 61112
+name: Doubao Seedream 4.0
+icon_uri: default_icon/doubao_v2.png
+icon_url: ""
+description:
+  zh: 图生图 文生图Seedream 4.0
+  en: doubao model description Seedream 4.0
+default_parameters:
+  # 保留原有参数配置（仅修正布尔/数字值的引号）
+  - name: size
+    label:
+      zh: 生成图片尺寸
+      en: Image Size
+    desc:
+      zh: |
+        - **生成图片尺寸**: 支持1024x1024/2048x2048/4096x4096等分辨率，尺寸越大生成耗时越长。
+      en: |
+        **Image Size**:
+        - Supports resolutions such as 1024x1024/2048x2048/4096x4096. Larger sizes take longer to generate.
+    type: string
+    default_val:
+      default_val: "1024x1024"
+    options:
+      - label: 1024x1024
+        value: "1024x1024"
+      - label: 2048x2048
+        value: "2048x2048"
+      - label: 4096x4096
+        value: "4096x4096"
+    style:
+      widget: select
+      label:
+        zh: 图片生成设置
+        en: Image Generation Settings
+  - name: response_format
+    label:
+      zh: 输出格式
+      en: Response format
+    desc:
+      zh: |
+        - **URL**: 返回图片的在线访问链接
+        - **Base64**: 返回图片的Base64编码字符串
+      en: |
+        **Response Format**:
+        - **URL**: Returns the online access link of the image
+        - **Base64**: Returns the Base64 encoded string of the image
+    type: int
+    default_val:
+      default_val: 0  # 去掉引号
+    options:
+      - label: URL
+        value: 0       # 去掉引号
+      - label: Base64
+        value: 1       # 去掉引号
+    style:
+      widget: radio_buttons
+      label:
+        zh: 输出设置
+        en: Output Settings
+  - name: watermark
+    label:
+      zh: 是否加水印
+      en: Watermark
+    desc:
+      zh: |
+        - **开启**: 生成的图片会添加官方水印
+        - **关闭**: 生成的图片无水印
+      en: |
+        **Watermark**:
+        - **On**: The generated image will add an official watermark
+        - **Off**: The generated image has no watermark
+    type: bool
+    default_val:
+      default_val: false  # 去掉引号
+    options:
+      - label: 开启
+        value: true       # 去掉引号
+      - label: 关闭
+        value: false      # 去掉引号
+    style:
+      widget: radio_buttons
+      label:
+        zh: 图片生成设置
+        en: Image Generation Settings
+meta:
+  protocol: ark
+  capability:
+    function_call: false
+    input_modal:
+      - text
+      - image
+    input_tokens: 128000
+    json_mode: false
+    max_tokens: 256000  # 补充缺失字段
+    output_modal:
+      - image
+    output_tokens: 16384
+    prefix_caching: false
+    reasoning: false
+    prefill_response: false
+  conn_config:
+    base_url: "https://ark.cn-beijing.volces.com/api/v3/"
+    api_key: ""  # 替换为真实值
+    timeout: 180s
+    model: ""  # 替换为真实值
+    temperature: 0.8  # 补充
+    frequency_penalty: 0  # 补充
+    presence_penalty: 0  # 补充
+    max_tokens: 4096  # 补充
+    top_p: 0.7  # 补充
+    top_k: 0  # 补充
+    stop: []  # 补充
+    enable_thinking: false  # 补充
+    enable_base64_url: true
+  ark:
+    region: "cn-beijing"
+    access_key: ""  # 替换为真实值
+    secret_key: ""  # 替换为真实值
+    retry_times: 3
+    custom_header: {}
+  type: "image"  # 自定义字段保留
+status: 0

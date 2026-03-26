@@ -103,6 +103,17 @@ struct UserUpdateProfileResponse {
     254: required string         msg
 }
 
+struct PassportPlatformALoginPostRequest {
+    1: required string encrypted_session_key
+}
+
+struct PassportPlatformALoginPostResponse {
+    1: required User data
+
+    253: required i32            code
+    254: required string         msg
+}
+
 service PassportService {
 
     // Email password registration
@@ -125,4 +136,7 @@ service PassportService {
     UserUpdateAvatarResponse UserUpdateAvatar(1: UserUpdateAvatarRequest req) (api.post="/api/web/user/update/upload_avatar/", api.serializer="form")
 
     UserUpdateProfileResponse UserUpdateProfile(1: UserUpdateProfileRequest req) (api.post="/api/user/update_profile")
+
+    // Platform A login
+    PassportPlatformALoginPostResponse PassportPlatformALoginPost(1: PassportPlatformALoginPostRequest req) (api.post="/api/passport/web/platform-a/login/")
 }

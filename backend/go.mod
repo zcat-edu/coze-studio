@@ -1,8 +1,10 @@
 module github.com/coze-dev/coze-studio/backend
 
-go 1.24.0
+go 1.25.0
 
 replace github.com/apache/thrift => github.com/apache/thrift v0.13.0
+
+replace github.com/shirou/gopsutil/v3 => github.com/shirou/gopsutil/v3 v3.21.10
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
@@ -16,7 +18,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.84.1
 	github.com/bytedance/gopkg v0.1.3
 	github.com/bytedance/mockey v1.2.14
-	github.com/bytedance/sonic v1.14.0
+	github.com/bytedance/sonic v1.15.0
 	github.com/cloudwego/eino v0.4.8
 	github.com/cloudwego/eino-ext/components/embedding/ark v0.1.0
 	github.com/cloudwego/eino-ext/components/embedding/gemini v0.0.0-20250814083140-54b99ff82f8e
@@ -38,10 +40,9 @@ require (
 	github.com/getkin/kin-openapi v0.118.0
 	github.com/go-resty/resty/v2 v2.16.5
 	github.com/google/uuid v1.6.0
-	github.com/hertz-contrib/cors v0.1.0
 	github.com/hertz-contrib/sse v0.1.0
 	github.com/jinzhu/copier v0.4.0
-	github.com/joho/godotenv v1.5.1
+	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/matoous/go-nanoid v1.5.1
 	github.com/mattn/go-shellwords v1.0.12
 	github.com/milvus-io/milvus-proto/go-api/v2 v2.5.0-beta.0.20250325034212-6e98baa34971 // indirect
@@ -71,7 +72,7 @@ require (
 	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394
 	golang.org/x/image v0.22.0
 	golang.org/x/mod v0.25.0
-	golang.org/x/oauth2 v0.28.0
+	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sync v0.16.0
 	google.golang.org/genai v1.18.0
 	gopkg.in/yaml.v2 v2.4.0
@@ -107,11 +108,11 @@ require (
 	github.com/aws/smithy-go v1.22.4 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
-	github.com/bytedance/sonic/loader v0.3.0 // indirect
+	github.com/bytedance/sonic/loader v0.5.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cilium/ebpf v0.11.0 // indirect
-	github.com/cloudwego/base64x v0.1.5 // indirect
+	github.com/cloudwego/base64x v0.1.6 // indirect
 	github.com/cloudwego/gopkg v0.1.4 // indirect
 	github.com/cloudwego/netpoll v0.7.0 // indirect
 	github.com/cockroachdb/errors v1.9.1 // indirect
@@ -204,7 +205,6 @@ require (
 	github.com/pingcap/failpoint v0.0.0-20240528011301-b51a646c7c86 // indirect
 	github.com/pingcap/log v1.1.1-0.20221015072633-39906604fb81 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
 	github.com/prometheus/client_golang v1.20.5 // indirect
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.55.0 // indirect
@@ -238,7 +238,6 @@ require (
 	github.com/xuri/nfp v0.0.0-20240318013403-ab9948c2c4a7 // indirect
 	github.com/yargevad/filepathx v1.0.0 // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
-	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.etcd.io/bbolt v1.3.6 // indirect
 	go.etcd.io/etcd/api/v3 v3.5.5 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.5.5 // indirect
@@ -293,6 +292,7 @@ require (
 	github.com/99designs/keyring v1.2.1 // indirect
 	github.com/AthenZ/athenz v1.12.13 // indirect
 	github.com/DataDog/zstd v1.5.0 // indirect
+	github.com/StackExchange/wmi v1.2.1 // indirect
 	github.com/ardielle/ardielle-go v1.5.2 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/bits-and-blooms/bitset v1.4.0 // indirect
@@ -302,7 +302,7 @@ require (
 	github.com/eino-contrib/jsonschema v1.0.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
-	github.com/go-jose/go-jose/v4 v4.0.5 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
 	github.com/godbus/dbus v0.0.0-20190726142602-4481cbc300e2 // indirect
 	github.com/golang-jwt/jwt/v5 v5.2.2 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
@@ -315,7 +315,6 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/nats-io/nkeys v0.4.7 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
-	github.com/shoenig/go-m1cpu v0.1.6 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.59.0 // indirect
 	golang.org/x/term v0.32.0 // indirect

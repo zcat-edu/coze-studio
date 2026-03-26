@@ -18,6 +18,7 @@ package middleware
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
@@ -36,38 +37,63 @@ import (
 var noNeedSessionCheckPath = map[string]bool{
 	"/api/passport/web/email/login/":       true,
 	"/api/passport/web/email/register/v2/": true,
+	"/api/auth/third_login":                true,
+	"/api/open/connect/session":            true,
 }
 
 func SessionAuthMW() app.HandlerFunc {
 	return func(c context.Context, ctx *app.RequestContext) {
-		requestAuthType := ctx.GetInt32(RequestAuthTypeStr)
-		if requestAuthType != int32(RequestAuthTypeWebAPI) {
+		path := string(ctx.GetRequest().URI().Path())
+		method := string(ctx.GetRequest().Method())
+
+		fmt.Printf("[SessionAuthMW] Request path: %s, method: %s\n", path, method)
+
+		if (path == "/api/auth/third_login" || path == "/api/auth/third_login/") && method == "GET" {
+			fmt.Printf("[SessionAuthMW] Third-party login path detected: %s, method: %s\n", path, method)
 			ctx.Next(c)
 			return
 		}
 
-		if noNeedSessionCheckPath[string(ctx.GetRequest().URI().Path())] {
+		if (path == "/api/open/connect/session" || path == "/api/open/connect/session/") && method == "GET" {
+			fmt.Printf("[SessionAuthMW] Connect session path detected: %s, method: %s\n", path, method)
+			ctx.Next(c)
+			return
+		}
+
+		if noNeedSessionCheckPath[path] {
+			fmt.Printf("[SessionAuthMW] No session check path detected: %s\n", path)
+			ctx.Next(c)
+			return
+		}
+
+		requestAuthType := ctx.GetInt32(RequestAuthTypeStr)
+		fmt.Printf("[SessionAuthMW] Request auth type: %d\n", requestAuthType)
+		if requestAuthType != int32(RequestAuthTypeWebAPI) {
+			fmt.Printf("[SessionAuthMW] Not web API request, skipping session check\n")
 			ctx.Next(c)
 			return
 		}
 
 		s := ctx.Cookie(entity.SessionKey)
+		fmt.Printf("[SessionAuthMW] Session key: %s\n", s)
 		if len(s) == 0 {
-			logs.Errorf("[SessionAuthMW] session id is nil")
+			fmt.Printf("[SessionAuthMW] Session key is empty, returning 401\n")
 			httputil.Unauthorized(ctx, "missing session_key in cookie")
 			return
 		}
 
-		// sessionID -> sessionData
 		session, err := user.UserApplicationSVC.ValidateSession(c, string(s))
 		if err != nil {
-			logs.Errorf("[SessionAuthMW] validate session failed, err: %v", err)
+			fmt.Printf("[SessionAuthMW] Validate session failed: %v\n", err)
 			httputil.InternalError(c, ctx, err)
 			return
 		}
 
 		if session != nil {
+			fmt.Printf("[SessionAuthMW] Session validated successfully: %v\n", session)
 			ctxcache.Store(c, consts.SessionDataKeyInCtx, session)
+		} else {
+			fmt.Printf("[SessionAuthMW] Session is nil\n")
 		}
 
 		ctx.Next(c)

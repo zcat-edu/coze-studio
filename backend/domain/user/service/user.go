@@ -57,6 +57,8 @@ type CreateUserRequest struct {
 	Description string
 	SpaceID     int64
 	Locale      string
+	ExternalID  string
+	Platform    string
 }
 
 type CreateUserResponse struct {
@@ -68,6 +70,7 @@ type User interface {
 	// Create creates or registers a new user.
 	Create(ctx context.Context, req *CreateUserRequest) (user *entity.User, err error)
 	Login(ctx context.Context, email, password string) (user *entity.User, err error)
+	PlatformALogin(ctx context.Context, email string) (user *entity.User, err error)
 	Logout(ctx context.Context, userID int64) (err error)
 	ResetPassword(ctx context.Context, email, password string) (err error)
 	GetUserInfo(ctx context.Context, userID int64) (user *entity.User, err error)
@@ -77,6 +80,8 @@ type User interface {
 	GetUserProfiles(ctx context.Context, userID int64) (user *entity.User, err error)
 	MGetUserProfiles(ctx context.Context, userIDs []int64) (users []*entity.User, err error)
 	ValidateSession(ctx context.Context, sessionKey string) (session *entity.Session, exist bool, err error)
+	CreateSession(ctx context.Context, userID int64) (sessionKey string, err error)
+	FindUserByExternalID(ctx context.Context, externalID, platform string) (user *entity.User, err error)
 	GetUserSpaceList(ctx context.Context, userID int64) (spaces []*entity.Space, err error)
 	GetUserSpaceBySpaceID(ctx context.Context, spaceID []int64) (space []*entity.Space, err error)
 }

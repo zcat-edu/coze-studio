@@ -400,6 +400,17 @@ services:
     volumes:
       - .env:/app/.env
       - ../backend/conf:/app/resources/conf
+      - ../backend/api:/app/api
+      - ../backend/application:/app/application
+      - ../backend/domain:/app/domain
+      - ../backend/infra:/app/infra
+      - ../backend/pkg:/app/pkg
+      - ../backend/types:/app/types
+      - ../backend/go.mod:/app/go.mod
+      - ../backend/go.sum:/app/go.sum
+      - ../backend/router_gen.go:/app/router_gen.go
+      - ../backend/router.go:/app/router.go
+      - ../backend/main.go:/app/main.go
       # - ../backend/static:/app/resources/static
     depends_on:
       mysql:
@@ -412,7 +423,8 @@ services:
         condition: service_healthy
       milvus:
         condition: service_healthy
-    command: ['/app/opencoze']
+    command:  ['/app/opencoze']
+
 
   coze-web:
     # build:

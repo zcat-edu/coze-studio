@@ -35,7 +35,6 @@ import (
 func GeneratedRegister(r *server.Hertz) {
 	// INSERT_POINT: DO NOT DELETE THIS LINE!
 	coze.Register(r)
-	staticFileRegister(r)
 }
 
 // staticFileRegister registers web page router.
@@ -50,8 +49,6 @@ func staticFileRegister(r *server.Hertz) {
 
 	r.Static("/static", path.Join(cwd, "/resources/static"))
 	r.StaticFile("/favicon.png", "./resources/static/favicon.png")
-	r.StaticFile("/", staticFile)
-	r.StaticFile("/sign", staticFile)
 
 	r.StaticFS("/admin", &app.FS{
 		Root:               path.Join(cwd, "/resources/conf"),
