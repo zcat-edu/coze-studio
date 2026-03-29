@@ -9,6 +9,15 @@ cluster:
           flood_stage: "99%"
 discovery:
   type: single-node
+# 显式去掉 ml（及 transform 等）角色，避免 x-pack-ml 等与 JVM 堆外内存叠加触发宿主机 OOM（日志: exit code 137）
+node.roles: [ master, data, ingest ]
+# 降低单机内存占用，避免与 JVM 堆叠加后触发 OOM（exit 137）
 xpack:
   security:
     enabled: false
+  ml:
+    enabled: false
+ingest:
+  geoip:
+    downloader:
+      enabled: false

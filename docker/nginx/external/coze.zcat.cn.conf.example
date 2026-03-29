@@ -1,0 +1,110 @@
+# =============================================================================
+# 外层 Nginx（公网域名）— 与 coze 栈里的 coze-web 配合使用
+# - 勿将此文件挂进 coze-web 容器。
+# - coze-web 仅监听 HTTP（如 coze-web:80 或 127.0.0.1:8888），不启用内层 443 / WEB_LISTEN_HTTPS。
+# - TLS 在本文件（外层）终止；证书来自 coze 项目 certbot 产生的卷 certbot-conf。
+#
+# 方案 A（推荐）：HTTPS 在本外层 Nginx 上配置 ssl_certificate；proxy_pass 仍用 http://coze_web_upstream
+# （上游为 coze-web 容器内 80，不要写 https://coze-web）。
+# =============================================================================
+
+# ---------- upstream（与「502 排查」一节一致，只保留一种）----------
+#
+# 外层在宿主机：用 127.0.0.1:8888
+# upstream coze_web_upstream {
+#     server 127.0.0.1:8888;
+#     keepalive 32;
+# }
+#
+# 外层在 Docker 且已加入 coze 网络：用容器名 + 容器内 80
+upstream coze_web_upstream {
+    server coze-web:80;
+    keepalive 32;
+}
+
+# ---------- 证书：外层容器需挂载与 coze 栈相同的卷（只读即可）----------
+#   volumes:
+#     - certbot-conf:/etc/letsencrypt:ro
+# 卷名在 coze 项目 docker-compose 中为 certbot-conf；首次 certbot 后才有 live 目录。
+# 路径（容器内）：
+#   /etc/letsencrypt/live/<COZE_DOMAIN>/fullchain.pem
+#   /etc/letsencrypt/live/<COZE_DOMAIN>/privkey.pem
+
+# ---------- HTTP：ACME 续期仍走 80，须保留 /.well-known/ ----------
+# 启用全站 HTTPS 后，可把下面「location /」改成 return 301 到 https（见注释块 A）。
+server {
+    listen 80;
+    server_name coze.zcat.cn;
+
+    location ^~ /.well-known/acme-challenge/ {
+        proxy_pass http://coze_web_upstream;
+        proxy_set_header Host $host;
+    }
+
+    location / {
+        proxy_pass http://coze_web_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 600s;
+    }
+}
+
+# 注释块 A：证书与外层 443 就绪后，可将上面 server 的 location / 替换为：
+#     location / {
+#         return 301 https://$host$request_uri;
+#     }
+# （保留 /.well-known/ 不动，以便 certbot HTTP-01 续期）
+
+# ---------- HTTPS（方案 A：证书只配在外层）----------
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name coze.zcat.cn;
+
+    ssl_certificate     /etc/letsencrypt/live/coze.zcat.cn/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/coze.zcat.cn/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_session_cache   shared:SSL:10m;
+    ssl_session_timeout 10m;
+
+    location / {
+        proxy_pass http://coze_web_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 600s;
+    }
+}
+
+# ---------- 外层 Nginx 的 compose 片段（Docker、方案 A）----------
+# networks:
+#   coze-studio-net:
+#     external: true
+#     name: coze-studio_coze-network
+# services:
+#   your-outer-nginx:
+#     ports:
+#       - "80:80"
+#       - "443:443"
+#     volumes:
+#       - certbot-conf:/etc/letsencrypt:ro
+#     networks:
+#       - default
+#       - coze-studio-net
+# volumes:
+#   certbot-conf:
+#     external: true
+#     name: coze-studio_certbot-conf
+# （name 以 docker volume ls 为准，一般为 <compose 项目名>_certbot-conf）
+#
+# 续期：coze 栈内 certbot 容器会 renew；证书更新后需 reload「加载证书的 Nginx」→ 对外层执行：
+#   docker exec <外层nginx容器> nginx -s reload
